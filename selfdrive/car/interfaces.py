@@ -8,7 +8,7 @@ from selfdrive.config import Conversions as CV
 from selfdrive.controls.lib.events import Events
 from selfdrive.controls.lib.vehicle_model import VehicleModel
 from selfdrive.controls.lib.drive_helpers import V_CRUISE_MAX
-from common.travis_checker import travis
+
 GearShifter = car.CarState.GearShifter
 EventName = car.CarEvent.EventName
 MAX_CTRL_SPEED = (V_CRUISE_MAX + 4) * CV.KPH_TO_MS  # 144 + 4 = 92 mph
@@ -17,8 +17,6 @@ MAX_CTRL_SPEED = (V_CRUISE_MAX + 4) * CV.KPH_TO_MS  # 144 + 4 = 92 mph
 
 class CarInterfaceBase():
   def __init__(self, CP, CarController, CarState):
-    self.keep_openpilot_engaged = True
-    self.disengage_due_to_slow_speed = False
     self.CP = CP
     self.VM = VehicleModel(CP)
 
@@ -34,8 +32,6 @@ class CarInterfaceBase():
     self.CC = None
     if CarController is not None:
       self.CC = CarController(self.cp.dbc_name, CP, self.VM)
-
-    self.dragonconf = None
 
   @staticmethod
   def calc_accel_override(a_ego, a_target, v_ego, v_target):
@@ -54,7 +50,7 @@ class CarInterfaceBase():
   def get_std_params(candidate, fingerprint, has_relay):
     ret = car.CarParams.new_message()
     ret.carFingerprint = candidate
-    ret.isPandaBlack = bool(has_relay)
+    ret.isPandaBlack = has_relay
 
     # standard ALC params
     ret.steerControlType = car.CarParams.SteerControlType.torque
@@ -71,10 +67,7 @@ class CarInterfaceBase():
     ret.brakeMaxBP = [0.]
     ret.brakeMaxV = [1.]
     ret.openpilotLongitudinalControl = False
-    ret.startAccel = 1.0
-    ret.minSpeedCan = 0.3
-    ret.stoppingBrakeRate = 0.2 # brake_travel/s while trying to stop
-    ret.startingBrakeRate = 0.8 # brake_travel/s while releasing on restart
+    ret.startAccel = 0.0
     ret.stoppingControl = False
     ret.longitudinalTuning.deadzoneBP = [0.]
     ret.longitudinalTuning.deadzoneV = [0.]
@@ -85,7 +78,7 @@ class CarInterfaceBase():
     return ret
 
   # returns a car.CarState, pass in car.CarControl
-  def update(self, c, can_strings, dragonconf):
+  def update(self, c, can_strings):
     raise NotImplementedError
 
   # return sendcan, pass in a car.CarControl
@@ -98,35 +91,27 @@ class CarInterfaceBase():
     if cs_out.doorOpen:
       events.add(EventName.doorOpen)
     #if cs_out.seatbeltUnlatched:
-    # events.add(EventName.seatbeltNotLatched)
-    if self.dragonconf.dpGearCheck and cs_out.gearShifter != GearShifter.drive and cs_out.gearShifter not in extra_gears:
-      events.add(EventName.wrongGear)
-    #if cs_out.gearShifter == GearShifter.reverse:
-    # events.add(EventName.reverseGear)
-    if not self.dragonconf.dpAtl and not cs_out.cruiseState.available:
+    #  events.add(EventName.seatbeltNotLatched)
+    #if cs_out.gearShifter != GearShifter.drive and cs_out.gearShifter not in extra_gears:
+    #  events.add(EventName.wrongGear)
+    if cs_out.gearShifter == GearShifter.reverse:
+      events.add(EventName.reverseGear)
+    if not cs_out.cruiseState.available:
       events.add(EventName.wrongCarMode)
     if cs_out.espDisabled:
       events.add(EventName.espDisabled)
-    #if cs_out.gasPressed and not self.dragonconf.dpAllowGas and not self.dragonconf.dpAtl:
-      if events.add(EventName.gasPressed)
+    #if cs_out.gasPressed:
+    #  events.add(EventName.gasPressed)
     if cs_out.stockFcw:
       events.add(EventName.stockFcw)
     if cs_out.stockAeb:
       events.add(EventName.stockAeb)
-    if travis:
-      if cs_out.vEgo > MAX_CTRL_SPEED:
-        events.add(EventName.speedTooHigh)
-    else:
-      if cs_out.vEgo > self.dragonconf.dpMaxCtrlSpeed:
-        events.add(EventName.speedTooHigh)
+    if cs_out.vEgo > MAX_CTRL_SPEED:
+      events.add(EventName.speedTooHigh)
     if cs_out.cruiseState.nonAdaptive:
       events.add(EventName.wrongCruiseMode)
 
-    if not self.dragonconf.dpLatCtrl:
-      events.add(EventName.manualSteeringRequired)
-    elif self.dragonconf.dpSteeringOnSignal and (cs_out.leftBlinker or cs_out.rightBlinker):
-      events.add(EventName.manualSteeringRequiredBlinkersOn)
-    elif cs_out.steerError:
+    if cs_out.steerError:
       events.add(EventName.steerUnavailable)
     elif cs_out.steerWarning:
       events.add(EventName.steerTempUnavailable)
@@ -134,15 +119,9 @@ class CarInterfaceBase():
     # Disable on rising edge of gas or brake. Also disable on brake when speed > 0.
     # Optionally allow to press gas at zero speed to resume.
     # e.g. Chrysler does not spam the resume button yet, so resuming with gas is handy. FIXME!
-    #if self.dragonconf.dpAtl:
-     # pass
-    #elif self.dragonconf.dpAllowGas:
-      #if cs_out.brakePressed and (not self.CS.out.brakePressed or not cs_out.standstill):
-        #events.add(EventName.pedalPressed)
-    #else:
-      #if (cs_out.gasPressed and (not self.CS.out.gasPressed) and cs_out.vEgo > gas_resume_speed) or \
-        # (cs_out.brakePressed and (not self.CS.out.brakePressed or not cs_out.standstill)):
-        #events.add(EventName.pedalPressed)
+    #if (cs_out.gasPressed and (not self.CS.out.gasPressed) and cs_out.vEgo > gas_resume_speed): or \
+      #(cs_out.brakePressed and (not self.CS.out.brakePressed or not cs_out.standstill)):
+    #  events.add(EventName.pedalPressed)
 
     # we engage when pcm is active (rising edge)
     if pcm_enable:
@@ -170,11 +149,8 @@ class CarStateBase:
   def __init__(self, CP):
     self.CP = CP
     self.car_fingerprint = CP.carFingerprint
-    self.out = car.CarState.new_message()
-
     self.cruise_buttons = 0
-    self.left_blinker_cnt = 0
-    self.right_blinker_cnt = 0
+    self.out = car.CarState.new_message()
 
     # Q = np.matrix([[10.0, 0.0], [0.0, 100.0]])
     # R = 1e3
@@ -189,11 +165,6 @@ class CarStateBase:
 
     v_ego_x = self.v_ego_kf.update(v_ego_raw)
     return float(v_ego_x[0]), float(v_ego_x[1])
-
-  def update_blinker(self, blinker_time: int, left_blinker_lamp: bool, right_blinker_lamp: bool):
-    self.left_blinker_cnt = blinker_time if left_blinker_lamp else max(self.left_blinker_cnt - 1, 0)
-    self.right_blinker_cnt = blinker_time if right_blinker_lamp else max(self.right_blinker_cnt - 1, 0)
-    return self.left_blinker_cnt > 0, self.right_blinker_cnt > 0
 
   @staticmethod
   def parse_gear_shifter(gear):
