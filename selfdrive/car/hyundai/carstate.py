@@ -37,8 +37,8 @@ class CarState(CarStateBase):
     ret.steerWarning = cp.vl["MDPS12"]['CF_Mdps_ToiUnavail'] != 0
 
     # cruise state
-    ret.cruiseState.available = True
-    ret.cruiseState.enabled = (cp.vl["SCC12"]['ACCMode'] != 0) or  ( cp.vl["SCC11"]['MainMode_ACC'] != 0)
+    ret.cruiseState.available = cp.vl["SCC11"]["MainMode_ACC"] != 0 if self.CP.carFingerprint in [CAR.HYUNDAI_GENESIS, CAR.GENESIS_G70, CAR.GENESIS_G80, CAR.GENESIS_G90, CAR.IONIQ] else True
+    ret.cruiseState.enabled = cp.vl["SCC12"]['ACCMode'] != 0
     ret.cruiseState.standstill = cp.vl["SCC11"]['SCCInfoDisplay'] == 4.
 
     if ret.cruiseState.enabled:
