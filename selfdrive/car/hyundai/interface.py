@@ -196,8 +196,8 @@ class CarInterface(CarInterfaceBase):
       ret.minSteerSpeed = 60 * CV.KPH_TO_MS
     elif candidate == CAR.GENESIS_G90:
       ret.mass = 2200
-      ret.wheelbase = 3.15
-      ret.steerRatio = 12.069
+      ret.wheelbase = 3.01
+      ret.steerRatio = 16.5
       ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kfBP = [[0.], [0.], [0.]]
       ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.16], [0.01]]
 
